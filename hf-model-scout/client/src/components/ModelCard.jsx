@@ -5,26 +5,59 @@ const formatMetric = (value) => {
   return `${value}`;
 };
 
-const formatDate = (value) => {
+const formatRelativeTime = (value) => {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+
+  const diffMs = date.getTime() - Date.now();
+  const units = [
+    ["year", 31_536_000_000],
+    ["month", 2_592_000_000],
+    ["day", 86_400_000],
+    ["hour", 3_600_000],
+    ["minute", 60_000]
+  ];
+
+  for (const [unit, ms] of units) {
+    if (Math.abs(diffMs) >= ms) {
+      const value = Math.round(diffMs / ms);
+      return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(value, unit);
+    }
+  }
+
+  return "just now";
 };
 
-const tagStyle = (tag) => {
+const formatParamCount = (value) => {
+  if (typeof value !== "number") return null;
+  const billions = (value / 1_000_000_000).toFixed(1).replace(/\.0$/, "");
+  return `${billions}B params`;
+};
+
+const specialTagStyle = (tag) => {
   const normalized = tag.toLowerCase();
-  if (normalized.includes("gguf")) return "bg-amber-500/20 text-amber-200";
-  if (normalized.includes("quant")) return "bg-purple-500/20 text-purple-200";
-  if (normalized.includes("lora")) return "bg-pink-500/20 text-pink-200";
+  if (normalized === "gguf") return "bg-amber-500/20 text-amber-200";
+  if (normalized === "quantized") return "bg-purple-500/20 text-purple-200";
+  if (normalized === "lora") return "bg-pink-500/20 text-pink-200";
+  if (normalized === "awq") return "bg-blue-500/20 text-blue-200";
+  if (normalized === "gptq") return "bg-orange-500/20 text-orange-200";
   return "bg-gray-800 text-gray-300";
 };
 
 const ModelCard = ({ model, isPinned, canPinMore, onPin, onUnpin }) => {
-  const modelId = model.modelId || model.id || "";
+  const modelId = model.id || model.modelId || "";
   const author = model.author || modelId.split("/")[0] || "unknown";
-  const displayName = modelId.split("/")[1] || modelId;
-  const tags = Array.isArray(model.tags) ? model.tags.slice(0, 6) : [];
+  const displayName = model.name || modelId.split("/")[1] || modelId;
+  const languages = Array.isArray(model.language)
+    ? model.language
+    : model.language
+      ? [model.language]
+      : [];
+  const visibleLanguages = languages.slice(0, 3);
+  const extraLanguageCount = Math.max(languages.length - visibleLanguages.length, 0);
+  const paramCountLabel = formatParamCount(model.paramCount);
+  const licenseLabel = model.license && model.license !== "unknown" ? model.license : null;
 
   return (
     <div
@@ -38,6 +71,7 @@ const ModelCard = ({ model, isPinned, canPinMore, onPin, onUnpin }) => {
           <div className="truncate text-base font-semibold text-white" title={modelId}>
             {displayName}
           </div>
+          <div className="text-[11px] text-gray-500" title={modelId}>{modelId}</div>
         </div>
         <div className="flex items-center gap-3 text-xs text-gray-400">
           <span className="flex items-center gap-1">
@@ -57,30 +91,64 @@ const ModelCard = ({ model, isPinned, canPinMore, onPin, onUnpin }) => {
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-        {model.library_name && (
+        {model.library && (
           <span className="rounded-full bg-blue-500/20 px-2 py-1 text-blue-200">
-            {model.library_name}
+            {model.library}
           </span>
         )}
-        {model.license && (
+        {model.task && (
+          <span className="rounded-full bg-indigo-500/20 px-2 py-1 text-indigo-200">
+            {model.task}
+          </span>
+        )}
+        {licenseLabel && (
           <span className="rounded-full bg-green-500/20 px-2 py-1 text-green-200">
-            {model.license}
+            {licenseLabel}
           </span>
         )}
-        <span className="text-gray-400">Updated {formatDate(model.lastModified)}</span>
+        {model.trendingScore > 50 && (
+          <span className="flex items-center gap-1 rounded-full bg-orange-500/20 px-2 py-1 text-orange-200">
+            <span aria-hidden="true">🔥</span>
+            Trending
+          </span>
+        )}
+        {model.gated && (
+          <span className="flex items-center gap-1 rounded-full bg-gray-800 px-2 py-1 text-gray-200">
+            <span aria-hidden="true">🔒</span>
+            Gated
+          </span>
+        )}
+        <span className="text-gray-400">Updated {formatRelativeTime(model.lastModified)}</span>
       </div>
 
+      {paramCountLabel && (
+        <div className="mt-2 text-xs text-gray-300">{paramCountLabel}</div>
+      )}
+      {model.baseModel && (
+        <div className="mt-1 text-xs text-gray-400">Fine-tune of {model.baseModel}</div>
+      )}
+
       <div className="mt-3 flex flex-wrap gap-2">
-        {tags.map((tag) => (
-          <span key={tag} className={`rounded-full px-2 py-1 text-[11px] ${tagStyle(tag)}`}>
+        {model.specialTags?.map((tag) => (
+          <span key={tag} className={`rounded-full px-2 py-1 text-[11px] ${specialTagStyle(tag)}`}>
             {tag}
           </span>
         ))}
+        {visibleLanguages.map((lang) => (
+          <span key={lang} className="rounded-full bg-gray-800 px-2 py-1 text-[11px] text-gray-200">
+            {lang}
+          </span>
+        ))}
+        {extraLanguageCount > 0 && (
+          <span className="rounded-full bg-gray-800 px-2 py-1 text-[11px] text-gray-200">
+            +{extraLanguageCount} more
+          </span>
+        )}
       </div>
 
       <div className="mt-4 flex items-center justify-between">
         <a
-          href={`https://huggingface.co/${modelId}`}
+          href={model.url || `https://huggingface.co/${modelId}`}
           target="_blank"
           rel="noreferrer"
           className="text-xs text-indigo-300 hover:text-indigo-200"

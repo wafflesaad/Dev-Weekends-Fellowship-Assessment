@@ -8,6 +8,40 @@ const cache = new NodeCache({ stdTTL: 300 });
 const HF_BASE = "https://huggingface.co/api/models";
 const AXIOS_TIMEOUT = 8000;
 
+const normalizeModel = (model) => {
+  const baseModel = model.cardData?.base_model;
+  const baseModelValue = Array.isArray(baseModel) ? baseModel[0] ?? null : baseModel ?? null;
+
+  return {
+    id: model.id,
+    author: model.author,
+    name: model.id.split("/")[1] ?? model.id,
+    task: model.pipeline_tag ?? model.cardData?.pipeline_tag ?? null,
+    library: model.library_name ?? model.cardData?.library_name ?? null,
+    downloads: model.downloads ?? 0,
+    likes: model.likes ?? 0,
+    lastModified: model.lastModified ?? null,
+    createdAt: model.createdAt ?? model.cardData?.createdAt ?? null,
+    trendingScore: model.trendingScore ?? 0,
+    gated: model.gated ?? false,
+    url: `https://huggingface.co/${model.id}`,
+    license:
+      model.cardData?.license ??
+      model.tags?.find((tag) => tag.startsWith("license:"))?.replace("license:", "") ??
+      "unknown",
+    language: model.cardData?.language ?? model.tags?.filter((tag) => /^[a-z]{2}$/.test(tag)) ?? [],
+    baseModel: baseModelValue,
+    datasets: model.cardData?.datasets ?? [],
+    architecture: model.config?.architectures?.[0] ?? null,
+    modelType: model.config?.model_type ?? null,
+    paramCount: model.safetensors?.total ?? null,
+    specialTags:
+      model.tags?.filter((tag) =>
+        ["gguf", "quantized", "lora", "4-bit", "8-bit", "awq", "gptq"].includes(tag.toLowerCase())
+      ) ?? []
+  };
+};
+
 const sendError = (res, code, message, status) => {
   return res.status(status).json({ error: true, code, message });
 };
@@ -39,11 +73,22 @@ router.get("/", async (req, res) => {
   try {
     const response = await axios.get(HF_BASE, {
       params: {
-        task: req.query.task,
+        pipeline_tag: req.query.task,
         sort: req.query.sort,
-        library: req.query.library,
+        direction: -1,
+        limit: req.query.limit,
         search: req.query.search,
-        limit: req.query.limit
+        ...(req.query.library && req.query.library !== "All" ? { library: req.query.library } : {}),
+        "expand[]": [
+          "downloads",
+          "likes",
+          "cardData",
+          "config",
+          "safetensors",
+          "trendingScore",
+          "library_name",
+          "createdAt"
+        ]
       },
       timeout: AXIOS_TIMEOUT
     });
@@ -52,9 +97,10 @@ router.get("/", async (req, res) => {
     if (data.length === 0) {
       return sendError(res, "NOT_FOUND", "No models found", 404);
     }
+    const normalized = data.map(normalizeModel);
 
-    cache.set(cacheKey, data);
-    return res.json(data);
+    cache.set(cacheKey, normalized);
+    return res.json(normalized);
   } catch (error) {
     const mapped = mapAxiosError(error);
     const status = mapped.code === "TIMEOUT" ? 504 : mapped.code === "HF_DOWN" ? 502 : 503;

@@ -1,24 +1,39 @@
 const formatMetric = (value) => {
-  if (typeof value !== "number") return "-";
+  if (typeof value !== "number") return "—";
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
   return `${value}`;
 };
 
 const formatDate = (value) => {
-  if (!value) return "-";
+  if (!value) return "—";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
+  if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 };
 
-const tagStyle = (tag) => {
-  const normalized = tag.toLowerCase();
-  if (normalized.includes("gguf")) return "bg-amber-500/20 text-amber-200";
-  if (normalized.includes("quant")) return "bg-purple-500/20 text-purple-200";
-  if (normalized.includes("lora")) return "bg-pink-500/20 text-pink-200";
-  return "bg-gray-800 text-gray-300";
+const formatParamCount = (value) => {
+  if (typeof value !== "number") return "—";
+  const billions = (value / 1_000_000_000).toFixed(1).replace(/\.0$/, "");
+  return `${billions}B`;
 };
+
+const formatText = (value) => {
+  if (value === null || value === undefined || value === "") return "—";
+  return value;
+};
+
+const formatList = (value) => {
+  if (!Array.isArray(value) || value.length === 0) return "—";
+  return value.join(", ");
+};
+
+const formatLicense = (value) => {
+  if (!value || value === "unknown") return "—";
+  return value;
+};
+
+const toArray = (value) => (Array.isArray(value) ? value : value ? [value] : []);
 
 const ComparisonPanel = ({ pinned, onUnpin, onClearAll }) => {
   const downloadMax = Math.max(...pinned.map((item) => item.downloads || 0), 0);
@@ -33,10 +48,27 @@ const ComparisonPanel = ({ pinned, onUnpin, onClearAll }) => {
   const rows = [
     { label: "Downloads", value: (item) => formatMetric(item.downloads), highlight: "downloads", max: downloadMax },
     { label: "Likes", value: (item) => formatMetric(item.likes), highlight: "likes", max: likeMax },
-    { label: "Library", value: (item) => item.library_name || "-" },
-    { label: "License", value: (item) => item.license || "-" },
+    { label: "Library", value: (item) => formatText(item.library) },
+    { label: "License", value: (item) => formatLicense(item.license) },
+    { label: "Architecture", value: (item) => formatText(item.architecture) },
+    { label: "Model Type", value: (item) => formatText(item.modelType) },
+    { label: "Param Count", value: (item) => formatParamCount(item.paramCount) },
+    { label: "Base Model", value: (item) => formatText(item.baseModel) },
+    { label: "Datasets", value: (item) => formatList(item.datasets) },
+    { label: "Languages", value: (item) => formatList(toArray(item.language)) },
+    { label: "Trending Score", value: (item) => formatText(item.trendingScore) },
     { label: "Last Updated", value: (item) => formatDate(item.lastModified) },
-    { label: "Tags", value: (item) => item.tags || [] }
+    {
+      label: "Link",
+      value: (item) =>
+        item.url ? (
+          <a href={item.url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200">
+            Open
+          </a>
+        ) : (
+          "—"
+        )
+    }
   ];
 
   return (
@@ -70,7 +102,9 @@ const ComparisonPanel = ({ pinned, onUnpin, onClearAll }) => {
                 {rowItems.map((item) => (
                   <div key={item.modelId} className="min-w-[180px] space-y-4">
                     <div className="flex items-start justify-between gap-2 text-xs font-semibold text-white">
-                      <span className="truncate" title={item.modelId}>{item.modelId.split("/")[1] || item.modelId}</span>
+                      <span className="truncate" title={item.id || item.modelId}>
+                        {item.name || item.id || item.modelId}
+                      </span>
                       <button
                         type="button"
                         onClick={() => onUnpin(item.modelId)}
@@ -82,26 +116,14 @@ const ComparisonPanel = ({ pinned, onUnpin, onClearAll }) => {
                     </div>
 
                     {rows.map((row) => {
-                      if (row.label === "Tags") {
-                        const tags = Array.isArray(row.value(item)) ? row.value(item) : [];
-                        return (
-                          <div key={row.label} className="flex flex-wrap gap-1">
-                            {tags.slice(0, 6).map((tag) => (
-                              <span key={tag} className={`rounded-full px-2 py-1 text-[10px] ${tagStyle(tag)}`}>
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        );
-                      }
-
                       const highlight = row.highlight && (item[row.highlight] || 0) === row.max && row.max > 0;
+                      const value = row.value(item);
                       return (
                         <div
                           key={row.label}
                           className={`text-xs ${highlight ? "text-indigo-300" : "text-gray-100"}`}
                         >
-                          {row.value(item)}
+                          {value}
                         </div>
                       );
                     })}
