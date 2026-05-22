@@ -118,9 +118,9 @@ const App = () => {
   const gridClass = gridColumns === 3 ? "lg:grid-cols-3" : "lg:grid-cols-2";
 
   const compareWidthClass = useMemo(() => {
-    if (pinned.length === 1) return "w-72";
-    if (pinned.length === 2) return "w-[34rem]";
-    if (pinned.length === 3) return "w-[42rem]";
+    if (pinned.length === 1) return "w-96";
+    if (pinned.length === 2) return "w-[40rem]";
+    if (pinned.length === 3) return "w-[52rem]";
     if (pinned.length >= 4) return "w-[60vw] max-w-4xl";
     return "w-0";
   }, [pinned.length]);
